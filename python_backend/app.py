@@ -1226,7 +1226,7 @@ def merge_clips_route():
                                 'hls_use_mpegts': True,  # Use MPEG-TS format for HLS
                                 'external_downloader_args': ['ffmpeg:-nostats', 'ffmpeg:-loglevel', 'ffmpeg:warning'],
                                 # Use browser cookies to mimic the browser, bypass age verification and geo-restriction
-                                'cookiesfrombrowser': (browser_to_try if 'browser_to_try' in locals() else 'chrome')
+                                # 'cookiesfrombrowser': (browser_to_try if 'browser_to_try' in locals() else 'chrome')
                             }
                             
                             # Add cookies file if available
