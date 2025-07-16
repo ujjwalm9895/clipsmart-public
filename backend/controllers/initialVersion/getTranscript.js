@@ -17,7 +17,7 @@ google.options({
 });
 
 const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
+    process.env.AUTH_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     'http://localhost:4001/api/v1/youtube/oauth2callback'
 );
@@ -61,7 +61,7 @@ const getTranscript = async (req, res) => {
 
         try {
             console.log(`Checking if video ${videoId} exists...`);
-            
+
             const videoResponse = await youtube.videos.list({
                 part: 'snippet',
                 id: videoId
@@ -90,20 +90,20 @@ const getTranscript = async (req, res) => {
 
             let transcriptList;
             let transcriptError = null;
-            
+
             try {
                 console.log('Trying to fetch English transcript...');
-                console.log("http://54.161.100.146:5000" + `/transcript/${videoId}`);
-                transcriptList = await axios.get("http://54.161.100.146:5000" + `/transcript/${videoId}`);
+                console.log("https://py.klipsmart.shop" + `/transcript/${videoId}`);
+                transcriptList = await axios.get("https://py.klipsmart.shop" + `/transcript/${videoId}`);
                 transcriptList = transcriptList.data.data;
                 console.log('Successfully fetched English transcript');
             } catch (err) {
                 transcriptError = err;
                 console.log('Failed to fetch English transcript:', err.message);
-                
+
                 try {
                     console.log('Trying to fetch transcript in any language...');
-                    transcriptList = await axios.get("http://54.161.100.146:5000" + `/transcript/${videoId}`);
+                    transcriptList = await axios.get("https://py.klipsmart.shop" + `/transcript/${videoId}`);
                     console.log('Successfully fetched transcript in non-English language');
                 } catch (fallbackErr) {
                     console.error('Failed to fetch transcript in any language:', fallbackErr.message);
@@ -115,7 +115,7 @@ const getTranscript = async (req, res) => {
                     });
                 }
             }
-            
+
             if (!transcriptList || transcriptList.length === 0) {
                 console.log('No transcript segments found');
                 return res.status(404).json({
@@ -123,7 +123,7 @@ const getTranscript = async (req, res) => {
                     status: false
                 });
             }
- 
+
             const processedTranscript = transcriptList;
 
             if (processedTranscript.length === 0) {
