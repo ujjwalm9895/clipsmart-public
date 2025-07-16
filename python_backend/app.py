@@ -235,9 +235,7 @@ def get_data(video_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-from flask import jsonify
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound, NoTranscriptAvailable
-from youtube_transcript_api._utils import WebshareProxyConfig
+
 
 @app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
