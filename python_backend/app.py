@@ -240,16 +240,19 @@ def get_data(video_id):
 def get_transcript(video_id):
     try:
         if not video_id:
+            print("[ERROR] No video ID provided.")
             return jsonify({
                 'message': "Video ID is required",
                 'status': False
             }), 400
 
+        print(f"[INFO] Fetching transcript for video ID: {video_id}")
         transcript_list = None
         transcript_error = None
         used_language = 'en'
 
         try:
+            print("[INFO] Attempting YouTubeTranscriptApi fetch (English only)")
             ytt_api = YouTubeTranscriptApi(
                 proxy_config=WebshareProxyConfig(
                     proxy_username=WEBSHARE_USERNAME,
@@ -257,11 +260,14 @@ def get_transcript(video_id):
                 )
             )
             transcript_list = ytt_api.fetch(video_id, languages=['en'])
+            print("[SUCCESS] Transcript fetched using preferred language 'en'")
 
         except Exception as e:
             transcript_error = str(e)
+            print(f"[WARNING] Primary fetch failed: {transcript_error}")
 
             try:
+                print("[INFO] Attempting fallback: list all available transcripts")
                 ytt_api = YouTubeTranscriptApi(
                     proxy_config=WebshareProxyConfig(
                         proxy_username=WEBSHARE_USERNAME,
@@ -276,11 +282,14 @@ def get_transcript(video_id):
                     transcript = first_available[0]
                     used_language = transcript.language_code
                     transcript_list = transcript.fetch()
+                    print(f"[SUCCESS] Fallback transcript fetched (language: {used_language})")
                 else:
                     raise Exception("No transcripts found")
 
             except Exception as fallback_err:
-                # ✅ Whisper fallback
+                print(f"[ERROR] No transcript found using YouTubeTranscriptApi fallback: {fallback_err}")
+                print("[INFO] Attempting Whisper fallback via yt-dlp and OpenAI")
+
                 try:
                     import yt_dlp
                     import uuid
@@ -293,6 +302,7 @@ def get_transcript(video_id):
                     audio_output_path = os.path.join(temp_dir, f"{video_id}_{uuid.uuid4().hex}.mp3")
                     cookies_path = os.path.join(os.path.dirname(__file__), "youtube_cookies.txt")
 
+                    print(f"[INFO] Downloading audio with yt-dlp using cookies: {cookies_path}")
                     ydl_opts = {
                         'format': 'bestaudio/best',
                         'outtmpl': audio_output_path,
@@ -308,10 +318,14 @@ def get_transcript(video_id):
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
+                    print(f"[SUCCESS] Audio downloaded at: {audio_output_path}")
+                    print("[INFO] Sending audio to Whisper API")
+
                     with open(audio_output_path, "rb") as audio_file:
                         whisper_result = openai.Audio.transcribe("whisper-1", audio_file)
 
                     os.remove(audio_output_path)
+                    print("[INFO] Temporary audio file deleted after transcription")
 
                     whisper_text = whisper_result.get("text", "").strip()
                     if not whisper_text:
@@ -325,6 +339,7 @@ def get_transcript(video_id):
                         'duration': None
                     }]
 
+                    print("[SUCCESS] Whisper transcription successful. Returning result.")
                     return jsonify({
                         'message': "Transcript generated via Whisper fallback",
                         'data': processed_transcript,
@@ -339,6 +354,7 @@ def get_transcript(video_id):
                     }), 200
 
                 except Exception as whisper_err:
+                    print(f"[ERROR] Whisper fallback failed: {whisper_err}")
                     return jsonify({
                         'message': "No transcript available and Whisper fallback failed",
                         'originalError': transcript_error,
@@ -348,11 +364,13 @@ def get_transcript(video_id):
                     }), 404
 
         if not transcript_list:
+            print("[ERROR] transcript_list is None after all attempts.")
             return jsonify({
                 'message': "No transcript segments found for this video",
                 'status': False
             }), 404
 
+        print("[INFO] Processing transcript segments")
         processed_transcript = []
         for index, item in enumerate(transcript_list):
             try:
@@ -370,15 +388,18 @@ def get_transcript(video_id):
                     }
                     if segment['text']:
                         processed_transcript.append(segment)
-            except Exception:
+            except Exception as process_err:
+                print(f"[WARNING] Skipped segment at index {index}: {process_err}")
                 continue
 
         if not processed_transcript:
+            print("[ERROR] All segments empty or failed to process")
             return jsonify({
                 'message': "Failed to process transcript segments",
                 'status': False
             }), 404
 
+        print(f"[SUCCESS] Transcript processed. Total segments: {len(processed_transcript)}")
         return jsonify({
             'message': "Transcript fetched successfully",
             'data': processed_transcript,
@@ -392,11 +413,15 @@ def get_transcript(video_id):
         }), 200
 
     except Exception as error:
+        print(f"[FATAL] Unexpected error: {error}")
         return jsonify({
             'message': "Failed to fetch transcript",
             'error': str(error),
             'status': False
         }), 500
+
+
+
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
     """
