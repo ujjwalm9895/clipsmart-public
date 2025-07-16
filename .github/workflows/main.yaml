@@ -1,4 +1,4 @@
-name: 🚀 Deploy ClipSmart Public to EC2
+name: 🚀 Deploy ClipSmart to EC2
 
 on:
   push:
@@ -20,6 +20,11 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           script: |
+            # Update & Install Essentials
+            sudo apt update
+            sudo apt install git docker.io docker-compose -y
+
+            # Clone or Pull the Repo
             cd /home/ubuntu
             if [ ! -d "clipsmart-public" ]; then
               git clone https://github.com/ujjwalm9895/clipsmart-public.git
@@ -27,6 +32,7 @@ jobs:
             cd clipsmart-public
             git pull origin master
 
+            # Generate .env file in backend
             cd backend
             cat <<EOF > .env
 PORT=${{ secrets.PORT }}
@@ -46,8 +52,10 @@ WEBSHARE_PASSWORD=${{ secrets.WEBSHARE_PASSWORD }}
 EOF
             cd ..
 
-            docker compose down
+            # Deploy with Docker Compose
+            docker compose down || true
             docker compose build
             docker compose up -d
 
-            docker system prune -f
+            # Clean Up
+            docker system prune -f || true
