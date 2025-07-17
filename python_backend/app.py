@@ -248,8 +248,7 @@ import openai
 
 
 
-from flask import Flask, request, jsonify
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound, CouldNotRetrieveTranscript
+
 import tempfile
 import subprocess
 import yt_dlp
@@ -257,9 +256,7 @@ import whisper
 import os
 import hashlib
 
-app = Flask(__name__)
 
-COOKIES_FILE = 'youtube_cookies.txt'
 
 def download_and_convert_audio(video_id):
     with tempfile.TemporaryDirectory() as tmpdir:
