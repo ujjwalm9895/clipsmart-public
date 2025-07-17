@@ -246,7 +246,7 @@ def get_data(video_id):
 
 
 
-@app.route('/transcript/<video_id>', methods=['GET', 'POST'])
+""@app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
     try:
         if request.method == 'POST':
@@ -298,6 +298,9 @@ def get_transcript(video_id):
                 print("[ERROR] All transcript attempts failed. Falling back to OpenAI Whisper API...")
 
                 try:
+                    if not hasattr(openai, "Audio") or not hasattr(openai.Audio, "transcribe"):
+                        raise Exception("OpenAI Whisper API is not available or not configured properly.")
+
                     temp_dir = "/var/tmp/clipsmart_transcripts"
                     os.makedirs(temp_dir, exist_ok=True)
                     audio_path = os.path.join(temp_dir, f"{uuid.uuid4()}.mp3")
@@ -318,6 +321,9 @@ def get_transcript(video_id):
                         ydl.download([f'https://www.youtube.com/watch?v={video_id}'])
 
                     print("[INFO] Audio downloaded. Sending to OpenAI Whisper API...")
+
+                    if not os.path.exists(audio_path):
+                        raise FileNotFoundError(f"Audio file not found at path: {audio_path}")
 
                     with open(audio_path, "rb") as audio_file:
                         transcript_result = openai.Audio.transcribe(
@@ -415,7 +421,9 @@ def get_transcript(video_id):
             'message': "Unexpected server error",
             'error': str(error),
             'status': False
-        }), 500        
+        }), 500
+
+
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
     """
