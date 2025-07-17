@@ -32,7 +32,7 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 COOKIES_PATH = "youtube_cookies.txt"
 
 # AWS S3 Configuration
@@ -245,6 +245,8 @@ def get_data(video_id):
 
 
 
+You said:
+
 @app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
     try:
@@ -254,41 +256,32 @@ def get_transcript(video_id):
                 'status': False
             }), 400
 
+        ytt_api = YouTubeTranscriptApi(
+            proxy_config=WebshareProxyConfig(
+                proxy_username=WEBSHARE_USERNAME,
+                proxy_password=WEBSHARE_PASSWORD,
+            )
+        )
+
         transcript_list = None
-        transcript_error = None
-        used_language = 'en'
+        used_language = "en"
 
         try:
-            ytt_api = YouTubeTranscriptApi(
-                proxy_config=WebshareProxyConfig(
-                    proxy_username=WEBSHARE_USERNAME,
-                    proxy_password=WEBSHARE_PASSWORD,
-                )
-            )
+            # Try English transcript
             transcript_list = ytt_api.fetch(video_id, languages=['en'])
-
         except Exception as e:
             transcript_error = str(e)
 
             try:
-                ytt_api = YouTubeTranscriptApi(
-                    proxy_config=WebshareProxyConfig(
-                        proxy_username=WEBSHARE_USERNAME,
-                        proxy_password=WEBSHARE_PASSWORD,
-                    )
-                )
-                # Fallback: fetch all available transcripts
-                all_transcripts = ytt_api.list_transcripts(video_id)
-                first_available = list(all_transcripts._manually_created_transcripts.values()) \
-                                  + list(all_transcripts._generated_transcripts.values())
-                
-                if first_available:
-                    transcript = first_available[0]
-                    used_language = transcript.language_code
-                    transcript_list = transcript.fetch()
-                else:
-                    raise Exception("No transcripts found")
+                # Get list of all available transcripts
+                transcript_metadata = ytt_api.list_transcripts(video_id)
 
+                # Use the first available transcript (could be 'hi', 'es', etc.)
+                transcript = transcript_metadata.find_transcript(
+                    [t.language_code for t in transcript_metadata]
+                )
+                transcript_list = transcript.fetch()
+                used_language = transcript.language_code
             except Exception as fallback_err:
                 return jsonify({
                     'message': "No transcript available for this video",
@@ -303,14 +296,14 @@ def get_transcript(video_id):
                 'status': False
             }), 404
 
+        # Process transcript
         processed_transcript = []
         for index, item in enumerate(transcript_list):
             try:
-                text = getattr(item, 'text', None)
-                start = getattr(item, 'start', None)
-                duration = getattr(item, 'duration', None)
-
-                if text is not None and start is not None and duration is not None:
+                text = item.get('text')
+                start = item.get('start')
+                duration = item.get('duration')
+                if text and start is not None and duration is not None:
                     segment = {
                         'id': index + 1,
                         'text': text.strip(),
@@ -347,7 +340,6 @@ def get_transcript(video_id):
             'error': str(error),
             'status': False
         }), 500
-
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
     """
