@@ -245,7 +245,7 @@ def get_data(video_id):
 
 
 
-You said:
+
 
 @app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
