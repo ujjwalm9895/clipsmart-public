@@ -105,14 +105,12 @@ const InputComponent = () => {
             
             if (youtubeUrl) {
                 if (youtubeUrl.includes('list=')) {
-                    let playlistId = youtubeUrl.split('list=')[1];
+                    let playlistId = youtubeUrl.split('v=')[1];
                     playlistId = playlistId.split('&')[0];
                     console.log("Processing playlist:", playlistId);
-                    let videoId = youtubeUrl.split('v=')[1].split('&')[0];
-                    console.log("Processing video:", videoId);
                     
                     try {
-                        const response = await axios.post(API_URL + "/api/v1/youtube/playlist/" + playlistId+"/" + videoId);
+                        const response = await axios.post(API_URL + "/api/v1/youtube/playlist/" + playlistId);
                         
                         if (!response.data || !response.data.data || !response.data.data.videoIds) {
                             throw new Error("Invalid response format from server");
