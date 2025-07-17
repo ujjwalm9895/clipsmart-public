@@ -27,6 +27,9 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+COOKIES_PATH = "youtube_cookies.txt"
+
 # AWS S3 Configuration
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID' )
@@ -236,8 +239,7 @@ def get_data(video_id):
         return jsonify({"error": str(e)}), 500
 
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-COOKIES_PATH = os.path.join(os.path.dirname(__file__), "youtube_cookies.txt")
+
 import os
 import uuid
 import tempfile
@@ -349,13 +351,25 @@ def get_transcript(video_id):
                     }), 200
 
                 except Exception as whisper_err:
-                    print(f"[ERROR] Whisper fallback failed: {whisper_err}")
+                    fallback_log = {
+                        "stage": "Whisper fallback",
+                        "video_id": video_id,
+                        "cookie_file_exists": os.path.exists(COOKIES_PATH),
+                        "audio_path_expected": audio_path,
+                        "transcript_error": transcript_error,
+                        "fallback_error": str(fallback_err),
+                        "whisper_error": str(whisper_err)
+                    }
+
+                    print(f"[ERROR] Whisper fallback failed. Details:\n{fallback_log}")
+
                     return jsonify({
                         'message': "Transcript unavailable and Whisper fallback failed",
                         'originalError': transcript_error,
                         'fallbackError': str(fallback_err),
                         'whisperError': str(whisper_err),
-                        'status': False
+                        'status': False,
+                        'debug': fallback_log  # ⚠️ Remove or guard this in production
                     }), 404
 
         if not transcript_list:
@@ -407,8 +421,7 @@ def get_transcript(video_id):
             'message': "Server error while fetching transcript",
             'error': str(final_err),
             'status': False
-        }), 500
-        
+        }), 500        
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
     """
