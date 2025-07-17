@@ -240,88 +240,101 @@ def get_data(video_id):
 
 
 
-import os
-import uuid
-import tempfile
-import yt_dlp
-import openai
-
-
-
-
-import tempfile
-import subprocess
-import yt_dlp
-import whisper
-import os
-import hashlib
-
-
-
-def download_and_convert_audio(video_id):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        webm_path = os.path.join(tmpdir, f"{video_id}.webm")
-        mp3_path = os.path.join(tmpdir, f"{video_id}_{hashlib.md5(video_id.encode()).hexdigest()}.mp3")
-
-        print(f"[INFO] Downloading audio to: {webm_path}")
-        ydl_opts = {
-            'format': 'bestaudio',
-            'outtmpl': webm_path,
-            'cookiefile': COOKIES_FILE,
-        }
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-        except Exception as e:
-            print(f"[ERROR] yt-dlp download failed: {e}")
-            raise RuntimeError("Audio download failed")
-
-        print(f"[INFO] Converting .webm to .mp3: {mp3_path}")
-        try:
-            subprocess.run(['ffmpeg', '-y', '-i', webm_path, mp3_path], check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"[ERROR] ffmpeg conversion failed: {e}")
-            raise RuntimeError("Audio conversion failed")
-
-        return mp3_path
-
-def transcribe_with_whisper(video_id):
-    try:
-        mp3_path = download_and_convert_audio(video_id)
-        print(f"[INFO] Running Whisper transcription on: {mp3_path}")
-        model = whisper.load_model("base")
-        result = model.transcribe(mp3_path)
-        return result['text']
-    except Exception as e:
-        print(f"[FATAL] Whisper failed: {e}")
-        raise RuntimeError("Whisper transcription failed")
 
 @app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
-    print(f"[INFO] Transcript requested for video: {video_id}")
-
-    # First try YouTubeTranscriptApi
     try:
-        print("[INFO] Trying YouTubeTranscriptApi (en)...")
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-        text = ' '.join([t['text'] for t in transcript])
-        print("[SUCCESS] Transcript fetched via YouTubeTranscriptApi.")
-        return jsonify({"source": "YouTubeTranscriptApi", "transcript": text})
-    except (TranscriptsDisabled, NoTranscriptFound, CouldNotRetrieveTranscript) as e:
-        print(f"[WARNING] YouTubeTranscriptApi failed: {e}")
+        if not video_id:
+            return jsonify({
+                'message': "Video ID is required",
+                'status': False
+            }), 400
 
-    # Fallback to Whisper
-    print("[INFO] Falling back to Whisper...")
-    try:
-        text = transcribe_with_whisper(video_id)
-        print("[SUCCESS] Transcript generated via Whisper.")
-        return jsonify({"source": "Whisper", "transcript": text})
-    except Exception as e:
-        print(f"[ERROR] Whisper transcription failed: {e}")
-        return jsonify({"error": "Transcript not available", "details": str(e)}), 500
+        ytt_api = YouTubeTranscriptApi(
+            proxy_config=WebshareProxyConfig(
+                proxy_username=WEBSHARE_USERNAME,
+                proxy_password=WEBSHARE_PASSWORD,
+            )
+        )
 
+        transcript_list = None
+        used_language = "en"
 
+        try:
+            # Try English transcript
+            transcript_list = ytt_api.fetch(video_id, languages=['en'])
+        except Exception as e:
+            transcript_error = str(e)
+
+            try:
+                # Get list of all available transcripts
+                transcript_metadata = ytt_api.list_transcripts(video_id)
+
+                # Use the first available transcript (could be 'hi', 'es', etc.)
+                transcript = transcript_metadata.find_transcript(
+                    [t.language_code for t in transcript_metadata]
+                )
+                transcript_list = transcript.fetch()
+                used_language = transcript.language_code
+            except Exception as fallback_err:
+                return jsonify({
+                    'message': "No transcript available for this video",
+                    'originalError': transcript_error,
+                    'fallbackError': str(fallback_err),
+                    'status': False
+                }), 404
+
+        if not transcript_list:
+            return jsonify({
+                'message': "No transcript segments found for this video",
+                'status': False
+            }), 404
+
+        # Process transcript
+        processed_transcript = []
+        for index, item in enumerate(transcript_list):
+            try:
+                text = item.get('text')
+                start = item.get('start')
+                duration = item.get('duration')
+                if text and start is not None and duration is not None:
+                    segment = {
+                        'id': index + 1,
+                        'text': text.strip(),
+                        'startTime': float(start),
+                        'endTime': float(start + duration),
+                        'duration': float(duration)
+                    }
+                    if segment['text']:
+                        processed_transcript.append(segment)
+            except Exception:
+                continue
+
+        if not processed_transcript:
+            return jsonify({
+                'message': "Failed to process transcript segments",
+                'status': False
+            }), 404
+
+        return jsonify({
+            'message': "Transcript fetched successfully",
+            'data': processed_transcript,
+            'status': True,
+            'totalSegments': len(processed_transcript),
+            'metadata': {
+                'videoId': video_id,
+                'language': used_language,
+                'isAutoGenerated': True
+            }
+        }), 200
+
+    except Exception as error:
+        return jsonify({
+            'message': "Failed to fetch transcript",
+            'error': str(error),
+            'status': False
+        }), 500
+        
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
     """
