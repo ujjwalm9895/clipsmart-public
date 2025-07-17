@@ -258,6 +258,7 @@ def get_transcript(video_id):
         transcript_error = None
         used_language = 'en'
 
+        # Primary attempt using YouTubeTranscriptApi
         try:
             print("[INFO] Trying YouTubeTranscriptApi (en)")
             ytt_api = YouTubeTranscriptApi(proxy_config=WebshareProxyConfig(
@@ -271,6 +272,7 @@ def get_transcript(video_id):
             transcript_error = str(e)
             print(f"[WARNING] YT API fetch failed: {transcript_error}")
 
+            # Fallback: Try fetching any available transcript
             try:
                 print("[INFO] Trying fallback with all transcript languages")
                 all_transcripts = ytt_api.list_transcripts(video_id)
@@ -369,9 +371,10 @@ def get_transcript(video_id):
                         'fallbackError': str(fallback_err),
                         'whisperError': str(whisper_err),
                         'status': False,
-                        'debug': fallback_log  # ⚠️ Remove or guard this in production
+                        'debug': fallback_log  # ⚠️ Optional: Hide in production
                     }), 404
 
+        # Final check
         if not transcript_list:
             print("[ERROR] transcript_list is still None after all attempts.")
             return jsonify({'message': "No transcript segments found", 'status': False}), 404
