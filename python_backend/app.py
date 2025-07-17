@@ -306,7 +306,8 @@ def get_transcript(video_id):
                     unique_id = str(uuid.uuid4())
                     audio_base_path = os.path.join(temp_dir, unique_id)
 
-                    print(f"[INFO] Downloading audio to: {audio_path}")
+                    print(f"[INFO] Downloading audio to: {audio_base_path}.mp3 (expected after conversion)")
+
                     ydl_opts = {
                         'format': 'bestaudio/best',
                         'outtmpl': audio_base_path + ".%(ext)s",
@@ -351,9 +352,9 @@ def get_transcript(video_id):
                             'duration': float(seg['end'] - seg['start'])
                         })
 
-                    if os.path.exists(audio_path):
-                        os.remove(audio_path)
-                        print(f"[INFO] Temporary audio file deleted: {audio_path}")
+                    if os.path.exists(final_audio_path):
+                        os.remove(final_audio_path)
+                        print(f"[INFO] Temporary audio file deleted: {final_audio_path}")
 
                     print(f"[SUCCESS] OpenAI Whisper API transcription complete. Segments: {len(processed_transcript)}")
 
