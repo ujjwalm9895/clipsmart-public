@@ -428,6 +428,7 @@ def get_transcript(video_id):
             'status': False
         }), 500
 
+
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
     """
