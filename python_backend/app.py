@@ -244,66 +244,63 @@ def get_data(video_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-from flask import jsonify, request
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api.formatters import JSONFormatter
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptAvailable
-from youtube_transcript_api._utils import WebshareProxyConfig
-from gcp_transcript_fallback import GCPTranscriber  # make sure this import works
-import traceback
-
-@app.route('/transcript/<video_id>', methods=['GET', 'POST'])
+f@app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
     try:
-        print("[INFO] Received transcript request.")
+        print(f"\n[INFO] Received transcript request for video ID: {video_id}")
         if not video_id:
-            print("[ERROR] No video_id provided.")
+            print("[ERROR] No video ID provided.")
             return jsonify({'message': "Video ID is required", 'status': False}), 400
 
-        print(f"[INFO] Attempting YouTube transcript for video: {video_id}")
         transcript_list = None
         transcript_error = None
         used_language = 'en'
 
-        # 1️⃣ Primary: English transcript
+        # First Attempt: English Transcript via Proxy
         try:
+            print("[INFO] Trying to fetch English transcript via proxy...")
             ytt_api = YouTubeTranscriptApi(
                 proxy_config=WebshareProxyConfig(
                     proxy_username=WEBSHARE_USERNAME,
-                    proxy_password=WEBSHARE_PASSWORD,
+                    proxy_password=WEBSHARE_PASSWORD
                 )
             )
             transcript_list = ytt_api.fetch(video_id, languages=['en'])
-            print("[SUCCESS] Fetched English transcript.")
+            print("[SUCCESS] English transcript fetched.")
         
         except Exception as e:
             transcript_error = str(e)
-            print(f"[WARNING] English transcript failed: {transcript_error}")
+            print(f"[WARNING] English transcript fetch failed: {transcript_error}")
 
-            # 2️⃣ Fallback: Any available transcript
+            # Fallback: Any available transcript
             try:
+                print("[INFO] Attempting fallback - listing available transcripts...")
+                ytt_api = YouTubeTranscriptApi(
+                    proxy_config=WebshareProxyConfig(
+                        proxy_username=WEBSHARE_USERNAME,
+                        proxy_password=WEBSHARE_PASSWORD
+                    )
+                )
                 all_transcripts = ytt_api.list_transcripts(video_id)
-                print(f"[INFO] Found {len(all_transcripts)} total transcripts.")
+                print(f"[INFO] Total transcripts found: {len(all_transcripts._manually_created_transcripts) + len(all_transcripts._generated_transcripts)}")
 
-                # Combine manual + auto-generated
-                all_options = list(all_transcripts._manually_created_transcripts.values()) \
-                            + list(all_transcripts._generated_transcripts.values())
-
-                if not all_options:
-                    raise Exception("No available fallback transcripts")
-
-                transcript = all_options[0]
-                used_language = transcript.language_code
-                transcript_list = transcript.fetch()
-                print(f"[SUCCESS] Fallback transcript fetched: {used_language}")
+                first_available = list(all_transcripts._manually_created_transcripts.values()) + \
+                                  list(all_transcripts._generated_transcripts.values())
+                
+                if first_available:
+                    transcript = first_available[0]
+                    used_language = transcript.language_code
+                    print(f"[INFO] Using available transcript in: {used_language}")
+                    transcript_list = transcript.fetch()
+                    print("[SUCCESS] Fallback transcript fetched.")
+                else:
+                    print("[ERROR] No transcripts available.")
+                    raise Exception("No transcripts found")
 
             except Exception as fallback_err:
-                print(f"[WARNING] Fallback also failed: {fallback_err}")
-                print("[INFO] Trying final fallback: Google Speech-to-Text")
-
-                # 3️⃣ Final: Google STT fallback
+                print("[INFO] Final fallback to Google Speech-to-Text...")
                 try:
-                    gcp_transcriber = GCPTranscriber(bucket_name="clipsmart-ai-video", language_code="en-IN")
+                    gcp_transcriber = GCPTranscriber(bucket_name="clipsmart-audio", language_code="en-IN")
                     segments = gcp_transcriber.generate_transcript(video_id)
 
                     return jsonify({
@@ -320,7 +317,6 @@ def get_transcript(video_id):
                     }), 200
                 except Exception as gcp_err:
                     print(f"[FATAL] Google fallback failed: {gcp_err}")
-                    traceback.print_exc()
                     return jsonify({
                         'message': "No transcript available (YouTube + Google fallback failed)",
                         'originalError': transcript_error,
@@ -329,11 +325,15 @@ def get_transcript(video_id):
                         'status': False
                     }), 404
 
-        # ✅ Process YouTube transcript if available
+        # No transcript fetched
         if not transcript_list:
-            print("[ERROR] Transcript list is empty even after all fallbacks.")
-            return jsonify({'message': "No transcript segments found", 'status': False}), 404
+            print("[ERROR] No transcript data after all fallbacks.")
+            return jsonify({
+                'message': "No transcript segments found for this video",
+                'status': False
+            }), 404
 
+        # Process transcript segments
         print(f"[INFO] Processing {len(transcript_list)} transcript segments...")
         processed_transcript = []
         for index, item in enumerate(transcript_list):
@@ -342,24 +342,29 @@ def get_transcript(video_id):
                 start = getattr(item, 'start', None)
                 duration = getattr(item, 'duration', None)
 
-                if text is not None and start is not None and duration is not None:
-                    end_time = start + duration
-                    processed_transcript.append({
+                if text and start is not None and duration is not None:
+                    segment = {
                         'id': index + 1,
                         'text': text.strip(),
                         'startTime': float(start),
-                        'endTime': float(end_time),
+                        'endTime': float(start + duration),
                         'duration': float(duration)
-                    })
+                    }
+                    if segment['text']:
+                        processed_transcript.append(segment)
                 else:
-                    print(f"[WARNING] Skipping segment {index + 1}: Missing values")
-            except Exception as seg_err:
-                print(f"[ERROR] Segment {index + 1} processing failed: {seg_err}")
+                    print(f"[WARNING] Skipping segment {index + 1}: missing values.")
+
+            except Exception as segment_err:
+                print(f"[ERROR] Error in segment {index + 1}: {segment_err}")
                 continue
 
         if not processed_transcript:
-            print("[ERROR] All transcript segments failed to process.")
-            return jsonify({'message': "Failed to process transcript segments", 'status': False}), 404
+            print("[ERROR] All transcript segments failed processing.")
+            return jsonify({
+                'message': "Failed to process transcript segments",
+                'status': False
+            }), 404
 
         print(f"[SUCCESS] Processed {len(processed_transcript)} transcript segments.")
         return jsonify({
@@ -376,13 +381,11 @@ def get_transcript(video_id):
 
     except Exception as error:
         print(f"[FATAL] Unexpected error: {error}")
-        traceback.print_exc()
         return jsonify({
-            'message': "Unexpected failure during transcript generation",
+            'message': "Failed to fetch transcript",
             'error': str(error),
             'status': False
         }), 500
-
 
 @app.route('/generate-cookies', methods=['GET'])
 def generate_cookies():
