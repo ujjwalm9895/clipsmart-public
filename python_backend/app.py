@@ -298,6 +298,11 @@ def get_transcript(video_id):
                 print("[ERROR] All transcript attempts failed. Falling back to OpenAI Whisper API...")
 
                 try:
+                    import openai
+                    import yt_dlp
+                    import uuid
+                    import os
+
                     if not hasattr(openai, "Audio") or not hasattr(openai.Audio, "transcribe"):
                         raise Exception("OpenAI Whisper API is not available or not configured properly.")
 
@@ -322,17 +327,13 @@ def get_transcript(video_id):
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([f'https://www.youtube.com/watch?v={video_id}'])
 
-                    final_audio_path = audio_base_path + ".mp3"  # What we expect after conversion
+                    final_audio_path = audio_base_path + ".mp3"
                     print(f"[INFO] Checking for converted audio file: {final_audio_path}")
-                    print("[INFO] Audio downloaded. Sending to OpenAI Whisper API...")
+
                     if not os.path.exists(final_audio_path):
-                        
                         raise FileNotFoundError(f"Audio file not found at path: {final_audio_path}")
 
-
-                    
-
-                    
+                    print("[INFO] Audio downloaded. Sending to OpenAI Whisper API...")
 
                     with open(final_audio_path, "rb") as audio_file:
                         transcript_result = openai.Audio.transcribe(
@@ -381,7 +382,7 @@ def get_transcript(video_id):
                         'status': False
                     }), 500
 
-        # YouTubeTranscriptApi result processing
+        # --- YouTubeTranscriptApi result processing ---
         processed_transcript = []
         for index, item in enumerate(transcript_list):
             try:
