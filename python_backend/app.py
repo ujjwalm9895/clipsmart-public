@@ -243,10 +243,6 @@ def get_data(video_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
-
-
 @app.route('/transcript/<video_id>', methods=['GET', 'POST'])
 def get_transcript(video_id):
     try:
