@@ -303,12 +303,13 @@ def get_transcript(video_id):
 
                     temp_dir = "/var/tmp/clipsmart_transcripts"
                     os.makedirs(temp_dir, exist_ok=True)
-                    audio_path = os.path.join(temp_dir, f"{uuid.uuid4()}.mp3")
+                    unique_id = str(uuid.uuid4())
+                    audio_base_path = os.path.join(temp_dir, unique_id)
 
                     print(f"[INFO] Downloading audio to: {audio_path}")
                     ydl_opts = {
                         'format': 'bestaudio/best',
-                        'outtmpl': audio_path,
+                        'outtmpl': audio_base_path + ".%(ext)s",
                         'postprocessors': [{
                             'key': 'FFmpegExtractAudio',
                             'preferredcodec': 'mp3',
@@ -320,12 +321,19 @@ def get_transcript(video_id):
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([f'https://www.youtube.com/watch?v={video_id}'])
 
+                    final_audio_path = audio_base_path + ".mp3"  # What we expect after conversion
+                    print(f"[INFO] Checking for converted audio file: {final_audio_path}")
                     print("[INFO] Audio downloaded. Sending to OpenAI Whisper API...")
+                    if not os.path.exists(final_audio_path):
+                        
+                        raise FileNotFoundError(f"Audio file not found at path: {final_audio_path}")
 
-                    if not os.path.exists(audio_path):
-                        raise FileNotFoundError(f"Audio file not found at path: {audio_path}")
 
-                    with open(audio_path, "rb") as audio_file:
+                    
+
+                    
+
+                    with open(final_audio_path, "rb") as audio_file:
                         transcript_result = openai.Audio.transcribe(
                             model="whisper-1",
                             file=audio_file,
