@@ -108,6 +108,13 @@ const InputComponent = () => {
                     let playlistId = youtubeUrl.split('list=')[1];
                     playlistId = playlistId.split('&')[0];
                     console.log("Processing playlist:", playlistId);
+
+                if (youtubeUrl.includes('v=')) {
+                   let videoId = youtubeUrl.split('v=')[1];
+                    videoId = videoId.split('&')[0];
+                    console.log("Processing video:", videoId);
+                
+                }    
                     
                     try {
                         const response = await axios.post(API_URL + "/api/v1/youtube/playlist/" + playlistId);
