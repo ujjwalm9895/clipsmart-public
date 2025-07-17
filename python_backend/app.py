@@ -247,10 +247,11 @@ def get_data(video_id):
 def get_transcript(video_id):
     try:
         if not video_id:
-            print("[ERROR] No video ID provided.")
-            return jsonify({'message': "Video ID is required", 'status': False}), 400
+            return jsonify({
+                'message': "Video ID is required",
+                'status': False
+            }), 400
 
-        print(f"[INFO] Fetching transcript for video ID: {video_id}")
         ytt_api = YouTubeTranscriptApi(
             proxy_config=WebshareProxyConfig(
                 proxy_username=WEBSHARE_USERNAME,
@@ -260,25 +261,24 @@ def get_transcript(video_id):
 
         transcript_list = None
         used_language = "en"
-        transcript_error = None
 
         try:
-            print("[INFO] Attempting English transcript...")
+            # Try English transcript
             transcript_list = ytt_api.fetch(video_id, languages=['en'])
         except Exception as e:
             transcript_error = str(e)
-            print(f"[WARNING] English transcript failed: {transcript_error}")
+
             try:
-                print("[INFO] Attempting fallback to other available transcript...")
+                # Get list of all available transcripts
                 transcript_metadata = ytt_api.list_transcripts(video_id)
+
+                # Use the first available transcript (could be 'hi', 'es', etc.)
                 transcript = transcript_metadata.find_transcript(
                     [t.language_code for t in transcript_metadata]
                 )
                 transcript_list = transcript.fetch()
                 used_language = transcript.language_code
-                print(f"[INFO] Fallback successful with language: {used_language}")
             except Exception as fallback_err:
-                print(f"[ERROR] Fallback failed: {str(fallback_err)}")
                 return jsonify({
                     'message': "No transcript available for this video",
                     'originalError': transcript_error,
@@ -287,14 +287,13 @@ def get_transcript(video_id):
                 }), 404
 
         if not transcript_list:
-            print("[WARNING] Transcript list is empty.")
             return jsonify({
                 'message': "No transcript segments found for this video",
                 'status': False
             }), 404
 
+        # Process transcript
         processed_transcript = []
-        print(f"[INFO] Processing transcript segments...")
         for index, item in enumerate(transcript_list):
             try:
                 text = item.get('text')
@@ -310,18 +309,15 @@ def get_transcript(video_id):
                     }
                     if segment['text']:
                         processed_transcript.append(segment)
-            except Exception as segment_err:
-                print(f"[WARNING] Error processing segment {index}: {str(segment_err)}")
+            except Exception:
                 continue
 
         if not processed_transcript:
-            print("[WARNING] No valid transcript segments after processing.")
             return jsonify({
                 'message': "Failed to process transcript segments",
                 'status': False
             }), 404
 
-        print(f"[SUCCESS] Transcript processed: {len(processed_transcript)} segments.")
         return jsonify({
             'message': "Transcript fetched successfully",
             'data': processed_transcript,
@@ -335,13 +331,11 @@ def get_transcript(video_id):
         }), 200
 
     except Exception as error:
-        print(f"[CRITICAL] Internal server error: {str(error)}")
         return jsonify({
             'message': "Failed to fetch transcript",
             'error': str(error),
             'status': False
-        }), 500
-
+        }), 500  
 
 @app.route('/upload-cookies', methods=['POST'])
 def upload_cookies():
