@@ -252,146 +252,70 @@ import openai
 def get_transcript(video_id):
     try:
         if not video_id:
-            print("[ERROR] No video ID provided.")
-            return jsonify({'message': "Video ID is required", 'status': False}), 400
+            return jsonify({
+                'message': "Video ID is required",
+                'status': False
+            }), 400
 
-        print(f"[INFO] Transcript requested for video: {video_id}")
         transcript_list = None
         transcript_error = None
         used_language = 'en'
 
-        # Primary attempt using YouTubeTranscriptApi
         try:
-            print("[INFO] Trying YouTubeTranscriptApi (en)")
-            ytt_api = YouTubeTranscriptApi(proxy_config=WebshareProxyConfig(
-                proxy_username=WEBSHARE_USERNAME,
-                proxy_password=WEBSHARE_PASSWORD
-            ))
+            ytt_api = YouTubeTranscriptApi(
+                proxy_config=WebshareProxyConfig(
+                    proxy_username=WEBSHARE_USERNAME,
+                    proxy_password=WEBSHARE_PASSWORD,
+                )
+            )
             transcript_list = ytt_api.fetch(video_id, languages=['en'])
-            print("[SUCCESS] Transcript fetched via YouTubeTranscriptApi")
 
         except Exception as e:
             transcript_error = str(e)
-            print(f"[WARNING] YT API fetch failed: {transcript_error}")
 
-            # Fallback: Try fetching any available transcript
             try:
-                print("[INFO] Trying fallback with all transcript languages")
+                ytt_api = YouTubeTranscriptApi(
+                    proxy_config=WebshareProxyConfig(
+                        proxy_username=WEBSHARE_USERNAME,
+                        proxy_password=WEBSHARE_PASSWORD,
+                    )
+                )
+                # Fallback: fetch all available transcripts
                 all_transcripts = ytt_api.list_transcripts(video_id)
-                first_available = list(all_transcripts._manually_created_transcripts.values()) + \
-                                  list(all_transcripts._generated_transcripts.values())
-
+                first_available = list(all_transcripts._manually_created_transcripts.values()) \
+                                  + list(all_transcripts._generated_transcripts.values())
+                
                 if first_available:
                     transcript = first_available[0]
                     used_language = transcript.language_code
                     transcript_list = transcript.fetch()
-                    print(f"[SUCCESS] Fallback transcript fetched (lang: {used_language})")
                 else:
-                    raise Exception("No available transcripts")
+                    raise Exception("No transcripts found")
 
             except Exception as fallback_err:
-                print(f"[ERROR] Transcript fallback failed: {fallback_err}")
-                print("[INFO] Falling back to Whisper API...")
+                return jsonify({
+                    'message': "No transcript available for this video",
+                    'originalError': transcript_error,
+                    'fallbackError': str(fallback_err),
+                    'status': False
+                }), 404
 
-                try:
-                    if not OPENAI_API_KEY:
-                        raise EnvironmentError("OPENAI_API_KEY is not set in environment")
-
-                    openai.api_key = OPENAI_API_KEY
-                    whisper_temp_dir = tempfile.mkdtemp()
-                    audio_filename = f"{video_id}_{uuid.uuid4().hex}.mp3"
-                    audio_path = os.path.join(whisper_temp_dir, audio_filename)
-
-                    print(f"[INFO] Downloading YouTube audio via yt-dlp to: {audio_path}")
-                    ydl_opts = {
-                        'format': 'bestaudio/best',
-                        'outtmpl': audio_path,
-                        'quiet': True,
-                        'cookiefile': COOKIES_PATH,
-                        'postprocessors': [{
-                            'key': 'FFmpegExtractAudio',
-                            'preferredcodec': 'mp3',
-                            'preferredquality': '192',
-                        }],
-                    }
-
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-
-                    if not os.path.exists(audio_path):
-                        raise FileNotFoundError(f"Audio not found at {audio_path}")
-
-                    print("[INFO] Sending audio to OpenAI Whisper API...")
-                    with open(audio_path, "rb") as audio_file:
-                        whisper_result = openai.Audio.transcribe("whisper-1", audio_file)
-
-                    os.remove(audio_path)
-                    print("[INFO] Deleted temp audio file after transcription")
-
-                    whisper_text = whisper_result.get("text", "").strip()
-                    if not whisper_text:
-                        raise ValueError("Whisper API returned an empty transcript")
-
-                    processed_transcript = [{
-                        'id': 1,
-                        'text': whisper_text,
-                        'startTime': 0.0,
-                        'endTime': None,
-                        'duration': None
-                    }]
-                    print("[SUCCESS] Whisper transcription completed")
-
-                    return jsonify({
-                        'message': "Transcript generated via OpenAI Whisper",
-                        'data': processed_transcript,
-                        'status': True,
-                        'totalSegments': 1,
-                        'metadata': {
-                            'videoId': video_id,
-                            'language': 'auto',
-                            'isAutoGenerated': True,
-                            'source': 'openai-whisper'
-                        }
-                    }), 200
-
-                except Exception as whisper_err:
-                    fallback_log = {
-                        "stage": "Whisper fallback",
-                        "video_id": video_id,
-                        "cookie_file_exists": os.path.exists(COOKIES_PATH),
-                        "audio_path_expected": audio_path,
-                        "transcript_error": transcript_error,
-                        "fallback_error": str(fallback_err),
-                        "whisper_error": str(whisper_err)
-                    }
-
-                    print(f"[ERROR] Whisper fallback failed. Details:\n{fallback_log}")
-
-                    return jsonify({
-                        'message': "Transcript unavailable and Whisper fallback failed",
-                        'originalError': transcript_error,
-                        'fallbackError': str(fallback_err),
-                        'whisperError': str(whisper_err),
-                        'status': False,
-                        'debug': fallback_log  # ⚠️ Optional: Hide in production
-                    }), 404
-
-        # Final check
         if not transcript_list:
-            print("[ERROR] transcript_list is still None after all attempts.")
-            return jsonify({'message': "No transcript segments found", 'status': False}), 404
+            return jsonify({
+                'message': "No transcript segments found for this video",
+                'status': False
+            }), 404
 
-        print("[INFO] Processing transcript segments...")
         processed_transcript = []
-        for idx, item in enumerate(transcript_list):
+        for index, item in enumerate(transcript_list):
             try:
                 text = getattr(item, 'text', None)
                 start = getattr(item, 'start', None)
                 duration = getattr(item, 'duration', None)
 
-                if text and start is not None and duration is not None:
+                if text is not None and start is not None and duration is not None:
                     segment = {
-                        'id': idx + 1,
+                        'id': index + 1,
                         'text': text.strip(),
                         'startTime': float(start),
                         'endTime': float(start + duration),
@@ -399,15 +323,15 @@ def get_transcript(video_id):
                     }
                     if segment['text']:
                         processed_transcript.append(segment)
-            except Exception as segment_err:
-                print(f"[WARNING] Skipped segment {idx}: {segment_err}")
+            except Exception:
                 continue
 
         if not processed_transcript:
-            print("[ERROR] All segments failed to process")
-            return jsonify({'message': "No usable segments found", 'status': False}), 404
+            return jsonify({
+                'message': "Failed to process transcript segments",
+                'status': False
+            }), 404
 
-        print(f"[SUCCESS] Final transcript prepared. Segments: {len(processed_transcript)}")
         return jsonify({
             'message': "Transcript fetched successfully",
             'data': processed_transcript,
@@ -420,11 +344,10 @@ def get_transcript(video_id):
             }
         }), 200
 
-    except Exception as final_err:
-        print(f"[FATAL] Unexpected error: {final_err}")
+    except Exception as error:
         return jsonify({
-            'message': "Server error while fetching transcript",
-            'error': str(final_err),
+            'message': "Failed to fetch transcript",
+            'error': str(error),
             'status': False
         }), 500
 
