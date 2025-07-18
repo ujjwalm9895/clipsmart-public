@@ -294,7 +294,6 @@ def get_transcript(video_id):
                     transcript_list = transcript.fetch()
                     print("[SUCCESS] Fallback transcript fetched.")
 
-                    # ✅ Force GCP fallback if transcript is empty
                     if not transcript_list:
                         print("[ERROR] Transcript list is empty — forcing Google fallback.")
                         raise Exception("Fallback transcript was empty")
@@ -306,7 +305,7 @@ def get_transcript(video_id):
             except Exception as fallback_err:
                 print("[INFO] Final fallback to Google Speech-to-Text...")
                 try:
-                    gcp_transcriber = GCPTranscriber(bucket_name="clipsmart-audio", language_code="en-IN")
+                    gcp_transcriber = GCPTranscriber(language_code="en-IN")
                     segments = gcp_transcriber.generate_transcript(video_id)
 
                     return jsonify({
@@ -335,7 +334,7 @@ def get_transcript(video_id):
         if not transcript_list:
             print("[ERROR] Transcript list is empty — attempting Google fallback directly...")
             try:
-                gcp_transcriber = GCPTranscriber(bucket_name="clipsmart-audio", language_code="en-IN")
+                gcp_transcriber = GCPTranscriber(language_code="en-IN")
                 segments = gcp_transcriber.generate_transcript(video_id)
 
                 return jsonify({
