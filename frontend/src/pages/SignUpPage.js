@@ -44,11 +44,30 @@ const SignUpPage = () => {
 
   // Check if user is already logged in
   useEffect(() => {
-    if (authService.isAuthenticated()) {
-      navigate('/dashboard');
-    }
-  }, [navigate]);
+  if (authService.isAuthenticated()) {
+    navigate('/dashboard');
+    return;
+  }
 
+  // Inject GIS script
+  const script = document.createElement('script');
+  script.src = 'https://accounts.google.com/gsi/client';
+  script.async = true;
+  script.defer = true;
+  script.onload = () => {
+    // Initialize Google login
+    if (window.google && !window.google.accounts?.id._initialized) {
+      window.google.accounts.id.initialize({
+        client_id: '1036480270163-j88flr553f9u2k8ltbttcnlfhhpuevo7.apps.googleusercontent.com', // ✅ paste your actual client ID here
+        callback: handleGoogleResponse,
+        ux_mode: 'popup',
+      });
+      window.google.accounts.id._initialized = true;
+    }
+  };
+  document.body.appendChild(script);
+}, [navigate]);
+   
   const validateForm = () => {
     // Reset error state
     let isValid = true;
@@ -181,9 +200,13 @@ const SignUpPage = () => {
   };
 
   const handleSocialSignUp = (provider) => {
-    // This would typically redirect to OAuth flow
-    setError(`${provider} signup is not implemented yet.`);
-  };
+  if (provider === 'Google') {
+    window.google.accounts.id.prompt(); // Triggers Google Sign-In
+  } else {
+    setError(`${provider} signup is not yet supported.`);
+  }
+};
+
 
   // Animation variants
   const containerVariants = {
@@ -205,6 +228,28 @@ const SignUpPage = () => {
       transition: { duration: 0.5 }
     }
   };
+
+
+const handleGoogleResponse = async (response) => {
+  setIsLoading(true);
+  setError('');
+  setSuccess('');
+
+  try {
+    const result = await authService.loginWithGoogle(response.credential);
+    if (result.status) {
+      navigate('/dashboard');
+    } else {
+      setError('Google login failed.');
+    }
+  } catch (err) {
+    console.error(err);
+    setError(err.message || 'Google login failed.');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   return (
     <div className="w-full min-h-screen flex items-center justify-center bg-[#0f0f1a] py-12">
