@@ -150,27 +150,55 @@ const SignInPage = () => {
     try {
       switch (provider) {
         case 'Google':
-          if (!window.gapi) {
-            throw new Error('Google API not loaded. Please try again later.');
+          if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+            throw new Error("Google Identity Services not loaded.");
           }
 
-          if (!window.gapi.auth2) {
-            await new Promise((resolve) => {
-              window.gapi.load('auth2', resolve);
-            });
-          }
-
-          if (!window.gapi.auth2.getAuthInstance()) {
-            await window.gapi.auth2.init({
+  // Wrap GIS login inside a Promise to allow `await`
+          await new Promise((resolve, reject) => {
+            window.google.accounts.id.initialize({
               client_id: '1036480270163-j88flr553f9u2k8ltbttcnlfhhpuevo7.apps.googleusercontent.com',
+              callback: async (response) => {
+                const googleToken = response.credential;
+                try {
+                  await authService.loginWithGoogle(googleToken);
+                  resolve(); // continue execution after success
+                } catch (err) {
+                  console.error("Google login error:", err);
+                  setError("Google login failed. Please try again.");
+                  setIsLoading(false);
+                  reject(err); // will go to catch block outside switch
+                }
+              },
             });
-          }
 
-          const googleAuth = window.gapi.auth2.getAuthInstance();
-          const googleUser = await googleAuth.signIn();
-          const googleToken = googleUser.getAuthResponse().id_token;
-          await authService.loginWithGoogle(googleToken);
+    // Show the Google login popup
+            window.google.accounts.id.prompt();
+          });
+
           break;
+
+        
+        
+        
+
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
 
     
     
