@@ -42,6 +42,27 @@ const SignUpPage = () => {
   const handleTerms = () => navigate('/terms');
   const handlePrivacy = () => navigate('/privacy');
 
+  const handleGoogleResponse = async (response) => {
+  setIsLoading(true);
+  setError('');
+  setSuccess('');
+
+  try {
+    const result = await authService.loginWithGoogle(response.credential);
+    if (result.status) {
+      navigate('/dashboard');
+    } else {
+      setError('Google login failed.');
+    }
+  } catch (err) {
+    console.error(err);
+    setError(err.message || 'Google login failed.');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
   // Check if user is already logged in
   useEffect(() => {
   if (authService.isAuthenticated()) {
@@ -61,6 +82,8 @@ const SignUpPage = () => {
         client_id: '1036480270163-j88flr553f9u2k8ltbttcnlfhhpuevo7.apps.googleusercontent.com', // ✅ paste your actual client ID here
         callback: handleGoogleResponse,
         ux_mode: 'popup',
+        auto_select: false,            // 🔥 Stop auto selecting
+        prompt_parent_id: 'signinDiv', // optional: if you want to attach popup to a DOM element
       });
       window.google.accounts.id._initialized = true;
     }
@@ -230,25 +253,6 @@ const SignUpPage = () => {
   };
 
 
-const handleGoogleResponse = async (response) => {
-  setIsLoading(true);
-  setError('');
-  setSuccess('');
-
-  try {
-    const result = await authService.loginWithGoogle(response.credential);
-    if (result.status) {
-      navigate('/dashboard');
-    } else {
-      setError('Google login failed.');
-    }
-  } catch (err) {
-    console.error(err);
-    setError(err.message || 'Google login failed.');
-  } finally {
-    setIsLoading(false);
-  }
-};
 
 
   return (
