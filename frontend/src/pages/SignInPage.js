@@ -150,16 +150,37 @@ const SignInPage = () => {
     try {
       switch (provider) {
         case 'Google':
-          if (!window.gapi || !window.gapi.auth2) {
+          if (!window.gapi) {
             throw new Error('Google API not loaded. Please try again later.');
           }
-          
-          // Initialize Google Sign-In
+
+          if (!window.gapi.auth2) {
+            await new Promise((resolve) => {
+              window.gapi.load('auth2', resolve);
+            });
+          }
+
+          if (!window.gapi.auth2.getAuthInstance()) {
+            await window.gapi.auth2.init({
+              client_id: '1036480270163-j88flr553f9u2k8ltbttcnlfhhpuevo7.apps.googleusercontent.com',
+            });
+          }
+
           const googleAuth = window.gapi.auth2.getAuthInstance();
           const googleUser = await googleAuth.signIn();
           const googleToken = googleUser.getAuthResponse().id_token;
           await authService.loginWithGoogle(googleToken);
           break;
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
         case 'GitHub':
           // Redirect to GitHub OAuth flow
